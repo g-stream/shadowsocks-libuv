@@ -34,9 +34,9 @@ char *sockaddr_to_str(struct sockaddr_storage *addr)
 void signal_cb(uv_signal_t* handle, int signum)
 {
 	extern struct encryptor crypto;
-
-	if (uv_signal_stop(handle))
-		SHOW_UV_ERROR_AND_EXIT(handle->loop);
+	int err = 0;
+	if (err = uv_signal_stop(handle))
+		SHOW_UV_ERROR_AND_EXIT(err);
 	free(handle);
 	LOGI("Ctrl+C Pressed");
 
@@ -62,9 +62,9 @@ void setup_signal_handler(uv_loop_t *loop)
 
 	int n = uv_signal_init(loop, hup);
 	if (n)
-		SHOW_UV_ERROR_AND_EXIT(loop);
+		SHOW_UV_ERROR_AND_EXIT(n);
 
 	n = uv_signal_start(hup, signal_cb, SIGINT);
 	if (n)
-		SHOW_UV_ERROR_AND_EXIT(loop);
+		SHOW_UV_ERROR_AND_EXIT(n);
 }

@@ -5,17 +5,14 @@ ifeq ($(UNAME), Darwin)
 RTFLAGS=-framework CoreServices
 endif
 OLEVEL=-O2 -DNDEBUG
-CFLAGS=-Wall $(OLEVEL) -I libuv/include -std=gnu99
+CFLAGS=-Wall $(OLEVEL) -I libuv/include -std=gnu99 -luv
 FILES=server.c utils.c encrypt.c md5.c rc4.c
 APP=server
 
-all: $(FILES) libuv/libuv.a
+all: $(FILES) 
 	$(CC) $(CFLAGS) -o \
 	$(APP) $(FILES) \
-	libuv/libuv.a -lpthread -lcrypto -lm $(RTFLAGS)
-
-libuv/libuv.a:
-	$(MAKE) -C libuv
+	-luv -lpthread -lcrypto -lm $(RTFLAGS)
 
 valgrind: OLEVEL=-O0 -g
 valgrind: all
@@ -35,7 +32,6 @@ test: all
 	cd pytest; python test.py
 
 clean:
-	$(MAKE) -C libuv clean
 	rm -f server
 	rm -rf *.dSYM
 	rm -rf test

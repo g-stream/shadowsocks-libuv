@@ -56,10 +56,10 @@ typedef struct
 	size_t buffer_len; // Also use as pending cound after handshake
 } server_ctx;
 
-static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t buf);
-static uv_buf_t client_handshake_alloc_cb(uv_handle_t* handle, size_t suggested_size);
+static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t* buf);
+static void client_handshake_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
 static void after_write_cb(uv_write_t* req, int status);
-static uv_buf_t established_alloc_cb(uv_handle_t* handle, size_t suggested_size);
+static void established_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
 static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res);
 
 #endif /* !SERVER_H_ */

@@ -60,8 +60,8 @@
 						  strftime(timestr, 20, TIME_FORMAT, localtime(&now));\
                           fprintf(stderr, "\e[01;31m %s FATAL: \e[0m" format " on File: %s Line: %s\n", timestr, ##__VA_ARGS__, __FILE__, TOSTR(__LINE__));exit(1);}\
                           while(0)
-#define SHOW_UV_ERROR(loop) do {LOGE("libuv error: %s", uv_strerror(uv_last_error(loop)));} while (0)
-#define SHOW_UV_ERROR_AND_EXIT(loop) do {SHOW_UV_ERROR(loop);LOGE("Fatal error, terminating... ");exit(1);} while (0)
+#define SHOW_UV_ERROR(err) do {LOGE("libuv error: %s", uv_err_name(err));} while (0)
+#define SHOW_UV_ERROR_AND_EXIT(err) do {SHOW_UV_ERROR(err);LOGE("Fatal error, terminating... ");exit(1);} while (0)
 //#define POINT_TO_STRUCT(field_ptr, field_name, struct_name) ((struct_name *)((char *)(field_ptr) - offsetof(struct_name, field_name)))
 #define SHIFT_BYTE_ARRAY_TO_LEFT(arr, offset, array_size) memmove((arr), (arr) + (offset), (array_size) - (offset))
 #define SHOW_BUFFER(buf, len) do {\

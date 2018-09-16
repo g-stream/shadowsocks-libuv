@@ -88,36 +88,36 @@ static void client_established_close_cb(uv_handle_t* handle)
 	}
 }
 
-static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t buf)
+static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t* buf)
 {
 	int n;
 	server_ctx *ctx = (server_ctx *)stream->data;
 
 	if (nread < 0) { // EOF
-		if (buf.len) // If buf is set, we need to free it
-			free(buf.base);
+		if (buf->len) // If buf is set, we need to free it
+			free(buf->base);
 		LOGCONN(&ctx->remote, "Remote %s EOF, closing");
 		HANDLE_CLOSE((uv_handle_t*)stream, remote_established_close_cb); // Then close the connection
 		return;
 	} else if (!nread) {
-		free(buf.base);
+		free(buf->base);
 		return;
 	}
 
-	shadow_encrypt((uint8_t *)buf.base, &ctx->encoder, nread);
+	shadow_encrypt((uint8_t *)buf->base, &ctx->encoder, nread);
 
 	uv_write_t *req = (uv_write_t *)malloc(sizeof(uv_write_t));
 	if (!req) {
 		HANDLE_CLOSE((uv_handle_t*)stream, remote_established_close_cb);
 		FATAL("malloc() failed!");
 	}
-	req->data = buf.base;
-	buf.len = nread;
-	n = uv_write(req, (uv_stream_t *)(void *)&ctx->client, &buf, 1, after_write_cb);
+	req->data = buf->base;
+	buf->len = nread;
+	n = uv_write(req, (uv_stream_t *)(void *)&ctx->client, buf, 1, after_write_cb);
 	if (n) {
 		LOGE("Write to client failed!");
 		free(req);
-		free(buf.base);
+		free(buf->base);
 		HANDLE_CLOSE((uv_handle_t*)(void *)&ctx->client, client_established_close_cb);
 		return;
 	}
@@ -130,8 +130,9 @@ static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 static void after_write_cb(uv_write_t* req, int status)
 {
 	server_ctx *ctx = (server_ctx *)req->handle->data;
+	/*
 	if (status) {
-		if (uv_last_error(req->handle->loop).code != UV_ECANCELED) {
+		if (uv_last_error(req->handle->loop) < 0) {
 			if ((uv_tcp_t *)req->handle == &ctx->client) {
 				HANDLE_CLOSE((uv_handle_t *)req->handle, client_established_close_cb);
 			} else {
@@ -142,7 +143,7 @@ static void after_write_cb(uv_write_t* req, int status)
 		free(req);
 		return;
 	}
-
+	*/
 	if ((uv_tcp_t *)req->handle == &ctx->client && !uv_is_closing((uv_handle_t *)(void *)&ctx->remote)) {
 		if (ctx->buffer_len <= MAX_PENDING_PER_CONN) {
 			int n = uv_read_start((uv_stream_t *)(void *)&ctx->remote, established_alloc_cb, remote_established_read_cb);
@@ -161,36 +162,36 @@ static void after_write_cb(uv_write_t* req, int status)
 	free(req);
 }
 
-static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t buf)
+static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t* buf)
 {
 	int n;
 	server_ctx *ctx = (server_ctx *)stream->data;
 
 	if (nread < 0) { // EOF
-		if (buf.len) // If buf is set, we need to free it
-			free(buf.base);
+		if (buf->len) // If buf is set, we need to free it
+			free(buf->base);
 		LOGCONN(&ctx->client, "Client %s EOF, closing");
 		HANDLE_CLOSE((uv_handle_t*)stream, client_established_close_cb); // Then close the connection
 		return;
 	} else if (!nread) {
-		free(buf.base);
+		free(buf->base);
 		return;
 	}
 
-	shadow_decrypt((uint8_t *)buf.base, &ctx->encoder, nread);
+	shadow_decrypt((uint8_t *)buf->base, &ctx->encoder, nread);
 
 	uv_write_t *req = (uv_write_t *)malloc(sizeof(uv_write_t));
 	if (!req) {
 		HANDLE_CLOSE((uv_handle_t*)stream, client_established_close_cb);
 		FATAL("malloc() failed!");
 	}
-	req->data = buf.base;
-	buf.len = nread;
+	req->data = buf->base;
+	buf->len = nread;
 	n = uv_write(req, (uv_stream_t *)(void *)&ctx->remote, &buf, 1, after_write_cb);
 	if (n) {
 		LOGE("Write to remote failed!");
 		free(req);
-		free(buf.base);
+		free(buf->base);
 		HANDLE_CLOSE((uv_handle_t*)(void *)&ctx->remote, remote_established_close_cb);
 		return;
 	}
@@ -198,21 +199,18 @@ static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 	// LOGI("Writed to remote");
 }
 
-static uv_buf_t established_alloc_cb(uv_handle_t* handle, size_t suggested_size)
+static void established_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
 {
 	#ifdef BUFFER_LIMIT
-	void *buf = malloc(BUFFER_LIMIT);
+	buf->base = malloc(BUFFER_LIMIT);
+	buf->len = BUFFER_LIMIT;
 	#else
-	void *buf = malloc(suggested_size);
+	buf->base = malloc(suggested_size);
+	buf->len = suggested_size;
 	#endif /* BUFFER_LIMIT */
-	if (!buf) {
+	if (!buf->base) {
 		FATAL("malloc() failed!");
 	}
-	#ifdef BUFFER_LIMIT
-	return uv_buf_init(buf, BUFFER_LIMIT);
-	#else
-	return uv_buf_init(buf, suggested_size);
-	#endif /* BUFFER_LIMIT */
 }
 
 // Failed during handshake
@@ -231,8 +229,9 @@ static void handshake_client_close_cb(uv_handle_t* handle)
 static void connect_to_remote_cb(uv_connect_t* req, int status)
 {
 	server_ctx *ctx = (server_ctx *)req->data;
+	/*
 	if (status) {
-		if (uv_last_error(req->handle->loop).code != UV_ECANCELED) {
+		if (uv_last_error(req->handle->loop) < 0) {
 			SHOW_UV_ERROR(ctx->client.loop);
 			uv_close((uv_handle_t*)(void *)&ctx->remote, remote_established_close_cb);
 			free(ctx->handshake_buffer);
@@ -240,7 +239,7 @@ static void connect_to_remote_cb(uv_connect_t* req, int status)
 		}
 		return;
 	}
-
+	*/
 	free(req);
 
 	LOGCONN(&ctx->remote, "Connected to %s");
@@ -361,27 +360,25 @@ static int do_handshake(uv_stream_t *stream)
 			FATAL("malloc() failed!");
 		}
 		req->data = ctx;
-
+		struct sockaddr addr;
 		if (ctx->remote_ip_type == ADDRTYPE_IPV4) {
 			struct sockaddr_in remote;
 			memset(&remote, 0, sizeof(remote));
 			remote.sin_family = AF_INET;
 			memcpy(&remote.sin_addr.s_addr, ctx->remote_ip, 4);
 			remote.sin_port = ctx->remote_port;
-
-			n = uv_tcp_connect(req, &ctx->remote, remote, connect_to_remote_cb);
+			n = uv_tcp_connect(req, &ctx->remote, ( const struct sockaddr* )&remote, connect_to_remote_cb);
 		} else if (ctx->remote_ip_type == ADDRTYPE_IPV6) {
 			struct sockaddr_in6 remote;
 			memset(&remote, 0, sizeof(remote));
 			remote.sin6_family = AF_INET6;
 			memcpy(&remote.sin6_addr.s6_addr, ctx->remote_ip, 16);
 			remote.sin6_port = ctx->remote_port;
-
-			n = uv_tcp_connect6(req, &ctx->remote, remote, connect_to_remote_cb);
+			n = uv_tcp_connect(req, &ctx->remote, ( const struct sockaddr* )&remote, connect_to_remote_cb);
 		} else {
 			FATAL("addrtype unknown!");
 		}
-
+		
 		if (n) {
 			SHOW_UV_ERROR(stream->loop);
 			uv_close((uv_handle_t*)stream, handshake_client_close_cb);
@@ -397,8 +394,10 @@ static int do_handshake(uv_stream_t *stream)
 static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res)
 {
 	server_ctx *ctx = (server_ctx *)resolver->data;
-	if (status) {
-		if (uv_last_error(ctx->client.loop).code == UV_ENOENT) {
+	//new version of libuv remove the loop error code feature  
+	//TODO: add error check
+	/*if (status) {
+		if (uv_last_error(ctx->client.loop) < 0) {
 			LOGI("Resolve error, NXDOMAIN");
 		} else {
 			SHOW_UV_ERROR(ctx->client.loop);
@@ -407,7 +406,7 @@ static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int sta
 		uv_freeaddrinfo(res);
 		free(resolver);
 		return;
-	}
+	}*/
 
 	if (res->ai_family == AF_INET) { // IPv4
 		memcpy(ctx->remote_ip, &((struct sockaddr_in*)(res->ai_addr))->sin_addr.s_addr, 4);
@@ -431,21 +430,21 @@ static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int sta
 	free(resolver);
 }
 
-static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t buf)
+static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t* buf)
 {
 	server_ctx *ctx = (server_ctx *)stream->data;
 
 	if (nread < 0) {
-		if (buf.len) // If buf is set, we need to free it
-			free(buf.base);
+		if (buf->len) // If buf is set, we need to free it
+			free(buf->base);
 		uv_close((uv_handle_t*)stream, handshake_client_close_cb); // Then close the connection
 		return;
 	} else if (!nread) {
-		free(buf.base);
+		free(buf->base);
 		return;
 	}
 
-	memcpy(ctx->handshake_buffer + ctx->buffer_len, buf.base, nread);
+	memcpy(ctx->handshake_buffer + ctx->buffer_len, buf->base, nread);
 	shadow_decrypt(ctx->handshake_buffer + ctx->buffer_len, &ctx->encoder, nread);
 
 	ctx->buffer_len += nread;
@@ -453,20 +452,16 @@ static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_
 	if (!ctx->handshake_buffer) {
 		FATAL("Should not call this anymore");
 	}
-	free(buf.base);
+	free(buf->base);
 	
 	do_handshake(stream);
 }
 
-static uv_buf_t client_handshake_alloc_cb(uv_handle_t* handle, size_t suggested_size)
+static void client_handshake_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
 {
 	server_ctx *ctx = (server_ctx *)handle->data;
-	void *buf = malloc(HANDSHAKE_BUFFER_SIZE - ctx->buffer_len);
-	if (!buf) {
-		HANDLE_CLOSE(handle, handshake_client_close_cb);
-		FATAL("malloc() failed!");
-	}
-	return uv_buf_init(buf, HANDSHAKE_BUFFER_SIZE - ctx->buffer_len);
+	buf->base = malloc(HANDSHAKE_BUFFER_SIZE - ctx->buffer_len);
+	buf->len = HANDSHAKE_BUFFER_SIZE - ctx->buffer_len;
 }
 
 static void connect_cb(uv_stream_t* listener, int status)
@@ -516,6 +511,7 @@ static void connect_cb(uv_stream_t* listener, int status)
 
 int main(int argc, char *argv[])
 {
+  
 	char **newargv = uv_setup_args(argc, argv);
 	char *server_listen = SERVER_LISTEN;
 	int server_port = SERVER_PORT;
@@ -580,13 +576,14 @@ int main(int argc, char *argv[])
 	uv_loop_t *loop = uv_default_loop();
 	uv_tcp_t listener;
 
-	struct sockaddr_in6 addr = uv_ip6_addr(server_listen, server_port);
+	struct sockaddr_in6 addr;
+	uv_ip6_addr(server_listen, server_port, &addr);
 
 	n = uv_tcp_init(loop, &listener);
 	if (n)
 		SHOW_UV_ERROR_AND_EXIT(loop);
 
-	n = uv_tcp_bind6(&listener, addr);
+	n = uv_tcp_bind(&listener, (const struct sockaddr*) &addr, 0);
 	if (n)
 		SHOW_UV_ERROR_AND_EXIT(loop);
 
