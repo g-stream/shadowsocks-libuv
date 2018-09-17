@@ -130,9 +130,8 @@ static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 static void after_write_cb(uv_write_t* req, int status)
 {
 	server_ctx *ctx = (server_ctx *)req->handle->data;
-	/*
 	if (status) {
-		if (uv_last_error(req->handle->loop) < 0) {
+		if (status < 0) {
 			if ((uv_tcp_t *)req->handle == &ctx->client) {
 				HANDLE_CLOSE((uv_handle_t *)req->handle, client_established_close_cb);
 			} else {
@@ -143,12 +142,11 @@ static void after_write_cb(uv_write_t* req, int status)
 		free(req);
 		return;
 	}
-	*/
 	if ((uv_tcp_t *)req->handle == &ctx->client && !uv_is_closing((uv_handle_t *)(void *)&ctx->remote)) {
 		if (ctx->buffer_len <= MAX_PENDING_PER_CONN) {
 			int n = uv_read_start((uv_stream_t *)(void *)&ctx->remote, established_alloc_cb, remote_established_read_cb);
 			if (n) {
-				SHOW_UV_ERROR(ctx->client.loop);
+				SHOW_UV_ERROR(n);
 				HANDLE_CLOSE((uv_handle_t *)(void *)&ctx->remote, remote_established_close_cb);
 				free(req->data); // Free buffer
 				free(req);
@@ -229,17 +227,16 @@ static void handshake_client_close_cb(uv_handle_t* handle)
 static void connect_to_remote_cb(uv_connect_t* req, int status)
 {
 	server_ctx *ctx = (server_ctx *)req->data;
-	/*
+
 	if (status) {
-		if (uv_last_error(req->handle->loop) < 0) {
-			SHOW_UV_ERROR(ctx->client.loop);
+		if (status < 0) {
+			SHOW_UV_ERROR(status);
 			uv_close((uv_handle_t*)(void *)&ctx->remote, remote_established_close_cb);
 			free(ctx->handshake_buffer);
 			free(req);
 		}
 		return;
 	}
-	*/
 	free(req);
 
 	LOGCONN(&ctx->remote, "Connected to %s");
@@ -272,13 +269,13 @@ static void connect_to_remote_cb(uv_connect_t* req, int status)
 	
 	int n = uv_read_start((uv_stream_t *)(void *)&ctx->client, established_alloc_cb, client_established_read_cb);
 	if (n) {
-		SHOW_UV_ERROR(ctx->client.loop);
+		SHOW_UV_ERROR(n);
 		uv_close((uv_handle_t*)(void *)&ctx->client, client_established_close_cb);
 		return;
 	}
 	n = uv_read_start((uv_stream_t *)(void *)&ctx->remote, established_alloc_cb, remote_established_read_cb);
 	if (n) {
-		SHOW_UV_ERROR(ctx->client.loop);
+		SHOW_UV_ERROR(n);
 		uv_close((uv_handle_t*)(void *)&ctx->remote, remote_established_close_cb);
 		return;
 	}
@@ -323,7 +320,7 @@ static int do_handshake(uv_stream_t *stream)
 			LOGI("Domain is: %s", domain);
 			n = uv_getaddrinfo(stream->loop, resolver, client_handshake_domain_resolved, domain, NULL, NULL);
 			if (n) {
-				SHOW_UV_ERROR(stream->loop);
+				SHOW_UV_ERROR(n);
 				uv_close((uv_handle_t*)stream, handshake_client_close_cb);
 				free(resolver);
 				return -1;
@@ -353,14 +350,13 @@ static int do_handshake(uv_stream_t *stream)
 		// Try connect now
 		n = uv_tcp_init(stream->loop, &ctx->remote);
 		if (n)
-			SHOW_UV_ERROR_AND_EXIT(stream->loop);
+			SHOW_UV_ERROR_AND_EXIT(n);
 		uv_connect_t *req = (uv_connect_t *)malloc(sizeof(uv_connect_t));
 		if (!req) {
 			uv_close((uv_handle_t*)stream, handshake_client_close_cb);
 			FATAL("malloc() failed!");
 		}
 		req->data = ctx;
-		struct sockaddr addr;
 		if (ctx->remote_ip_type == ADDRTYPE_IPV4) {
 			struct sockaddr_in remote;
 			memset(&remote, 0, sizeof(remote));
@@ -380,7 +376,7 @@ static int do_handshake(uv_stream_t *stream)
 		}
 		
 		if (n) {
-			SHOW_UV_ERROR(stream->loop);
+			SHOW_UV_ERROR(n);
 			uv_close((uv_handle_t*)stream, handshake_client_close_cb);
 			free(req);
 			return -1;
@@ -394,19 +390,17 @@ static int do_handshake(uv_stream_t *stream)
 static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res)
 {
 	server_ctx *ctx = (server_ctx *)resolver->data;
-	//new version of libuv remove the loop error code feature  
-	//TODO: add error check
-	/*if (status) {
-		if (uv_last_error(ctx->client.loop) < 0) {
+    if (status) {
+		if (status < 0) {
 			LOGI("Resolve error, NXDOMAIN");
 		} else {
-			SHOW_UV_ERROR(ctx->client.loop);
+			SHOW_UV_ERROR(status);
 		}
 		uv_close((uv_handle_t*)(void *)&ctx->client, handshake_client_close_cb);
 		uv_freeaddrinfo(res);
 		free(resolver);
 		return;
-	}*/
+	}
 
 	if (res->ai_family == AF_INET) { // IPv4
 		memcpy(ctx->remote_ip, &((struct sockaddr_in*)(res->ai_addr))->sin_addr.s_addr, 4);
@@ -422,7 +416,7 @@ static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int sta
 		int n = uv_read_start((uv_stream_t *)(void *)&ctx->client, client_handshake_alloc_cb, client_handshake_read_cb);
 		if (n) {
 			uv_close((uv_handle_t*)(void *)&ctx->client, handshake_client_close_cb);
-			SHOW_UV_ERROR(ctx->client.loop);
+			SHOW_UV_ERROR(n);
 		}
 	}
 
@@ -469,7 +463,7 @@ static void connect_cb(uv_stream_t* listener, int status)
 	int n;
 
 	if (status) {
-		SHOW_UV_ERROR(listener->loop);
+		SHOW_UV_ERROR(n);
 		return;
 	}
 
@@ -486,25 +480,25 @@ static void connect_cb(uv_stream_t* listener, int status)
 
 	n = uv_tcp_init(listener->loop, &ctx->client);
 	if (n)
-		SHOW_UV_ERROR_AND_EXIT(listener->loop);
+		SHOW_UV_ERROR_AND_EXIT(n);
 
 	n = uv_accept(listener, (uv_stream_t *)(void *)&ctx->client);
 	if (n)
-		SHOW_UV_ERROR_AND_EXIT(listener->loop);
+		SHOW_UV_ERROR_AND_EXIT(n);
 
 	n = uv_tcp_nodelay(&ctx->client, 1);
 	if (n)
-		SHOW_UV_ERROR_AND_EXIT(listener->loop);
+		SHOW_UV_ERROR_AND_EXIT(n);
 
 	#ifdef KEEPALIVE_TIMEOUT
 	n = uv_tcp_keepalive(&ctx->client, 1, KEEPALIVE_TIMEOUT);
 	if (n)
-		SHOW_UV_ERROR_AND_EXIT(listener->loop);
+		SHOW_UV_ERROR_AND_EXIT(n);
 	#endif /* KEEPALIVE_TIMEOUT */
 
 	n = uv_read_start((uv_stream_t *)(void *)&ctx->client, client_handshake_alloc_cb, client_handshake_read_cb);
 	if (n)
-		SHOW_UV_ERROR_AND_EXIT(listener->loop);
+		SHOW_UV_ERROR_AND_EXIT(n);
 
 	LOGCONN(&ctx->client, "Accepted connection from %s");
 }
@@ -581,15 +575,15 @@ int main(int argc, char *argv[])
 
 	n = uv_tcp_init(loop, &listener);
 	if (n)
-		SHOW_UV_ERROR_AND_EXIT(loop);
+		SHOW_UV_ERROR_AND_EXIT(n);
 
 	n = uv_tcp_bind(&listener, (const struct sockaddr*) &addr, 0);
 	if (n)
-		SHOW_UV_ERROR_AND_EXIT(loop);
+		SHOW_UV_ERROR_AND_EXIT(n);
 
 	n = uv_listen((uv_stream_t*)(void *)&listener, 5, connect_cb);
 	if (n)
-		SHOW_UV_ERROR_AND_EXIT(loop);
+		SHOW_UV_ERROR_AND_EXIT(n);
 	LOGI("Listening on %s:%d", server_listen, server_port);
 
 	#ifndef NDEBUG

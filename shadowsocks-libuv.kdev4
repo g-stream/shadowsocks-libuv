@@ -1,0 +1,4 @@
+[Project]
+CreatedFrom=shadowsocks-libuv
+Manager=KDevCustomMakeManager
+Name=shadowsocks-libuv
