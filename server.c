@@ -159,7 +159,10 @@ static void after_write_cb(uv_write_t* req, int status)
 	free(req->data); // Free buffer
 	free(req);
 }
-
+static void printbuf(uv_buf_t* buf){
+  buf->base[buf->len] = '\0';
+  printf("%s\n", buf->base);
+}
 static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t* buf)
 {
 	int n;
@@ -177,7 +180,8 @@ static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 	}
 
 	shadow_decrypt((uint8_t *)buf->base, &ctx->encoder, nread);
-
+	printf("decrypt finished in established_cb\n");
+	printbuf(buf);
 	uv_write_t *req = (uv_write_t *)malloc(sizeof(uv_write_t));
 	if (!req) {
 		HANDLE_CLOSE((uv_handle_t*)stream, client_established_close_cb);
@@ -440,7 +444,8 @@ static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_
 
 	memcpy(ctx->handshake_buffer + ctx->buffer_len, buf->base, nread);
 	shadow_decrypt(ctx->handshake_buffer + ctx->buffer_len, &ctx->encoder, nread);
-
+	printf("decrypted finished in handshake_cb\n");
+	printbuf(buf);
 	ctx->buffer_len += nread;
 
 	if (!ctx->handshake_buffer) {
