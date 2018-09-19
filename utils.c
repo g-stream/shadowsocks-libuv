@@ -8,7 +8,7 @@ char *sockaddr_to_str(struct sockaddr_storage *addr)
 {
 	char *result;
 	if (addr->ss_family == AF_INET) { // IPv4
-		result = (char *)malloc(INET_ADDRSTRLEN);
+		result = (char *)malloc(INET_ADDRSTRLEN+8);
 		if (!result)
 			FATAL("malloc() failed!");
 		int n = uv_ip4_name((struct sockaddr_in*)addr, result, INET_ADDRSTRLEN);
@@ -16,6 +16,11 @@ char *sockaddr_to_str(struct sockaddr_storage *addr)
 			free(result);
 			result = NULL;
 		}
+		int len = strlen(result);
+        result[len]=':';
+        uint8_t x1 = ((uint8_t*)&(((struct sockaddr_in*)addr)->sin_port))[0];
+        uint8_t x2 = ((uint8_t*)&(((struct sockaddr_in*)addr)->sin_port))[1];
+        snprintf(result+len+1, 8, "%d", x1*256 + x2);
 	} else if (addr->ss_family == AF_INET6) { // IPv4
 		result = (char *)malloc(INET6_ADDRSTRLEN);
 		if (!result)
@@ -25,6 +30,12 @@ char *sockaddr_to_str(struct sockaddr_storage *addr)
 			free(result);
 			result = NULL;
 		}
+		int len = strlen(result);
+        result[len]=':';
+        uint8_t x1 = ((uint8_t*)&(((struct sockaddr_in6*)addr)->sin6_port))[0];
+        uint8_t x2 = ((uint8_t*)&(((struct sockaddr_in6*)addr)->sin6_port))[1];
+        snprintf(result+len+1, 8, "%d", x1*256 + x2);
+        
 	} else {
 		result =  NULL;
 	}

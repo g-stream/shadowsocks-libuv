@@ -32,6 +32,10 @@
 
 struct encryptor crypto;
 
+static void printbuf(uv_buf_t* buf){
+ // buf->base[buf->len] = 0;
+  //printf("%s\n", buf->base);
+}
 static void established_free_cb(uv_handle_t* handle)
 {
 	server_ctx *ctx = (server_ctx *)handle->data;
@@ -103,7 +107,9 @@ static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 		free(buf->base);
 		return;
 	}
-
+    LOGI("Called remote_established_read_cb");
+    LOGI("buf info(then encrypt):");
+    printbuf(buf);
 	shadow_encrypt((uint8_t *)buf->base, &ctx->encoder, nread);
 
 	uv_write_t *req = (uv_write_t *)malloc(sizeof(uv_write_t));
@@ -159,10 +165,7 @@ static void after_write_cb(uv_write_t* req, int status)
 	free(req->data); // Free buffer
 	free(req);
 }
-static void printbuf(uv_buf_t* buf){
-  buf->base[buf->len] = '\0';
-  printf("%s\n", buf->base);
-}
+
 static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t* buf)
 {
 	int n;
@@ -178,10 +181,10 @@ static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 		free(buf->base);
 		return;
 	}
-
 	shadow_decrypt((uint8_t *)buf->base, &ctx->encoder, nread);
-	printf("decrypt finished in established_cb\n");
+    printf("decrypt finished in established_cb\n");
 	printbuf(buf);
+	
 	uv_write_t *req = (uv_write_t *)malloc(sizeof(uv_write_t));
 	if (!req) {
 		HANDLE_CLOSE((uv_handle_t*)stream, client_established_close_cb);
@@ -407,9 +410,11 @@ static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int sta
 	}
 
 	if (res->ai_family == AF_INET) { // IPv4
+        LOGI("Resolved! Get an ipv4 address");
 		memcpy(ctx->remote_ip, &((struct sockaddr_in*)(res->ai_addr))->sin_addr.s_addr, 4);
 		ctx->remote_ip_type = ADDRTYPE_IPV4;
 	} else if (res->ai_family == AF_INET6) {
+        LOGI("Resolved! Get an ipv6 address");
 		memcpy(ctx->remote_ip, &((struct sockaddr_in6*)(res->ai_addr))->sin6_addr.s6_addr, 16);
 		ctx->remote_ip_type = ADDRTYPE_IPV6;
 	} else {
@@ -445,9 +450,13 @@ static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_
 	memcpy(ctx->handshake_buffer + ctx->buffer_len, buf->base, nread);
 	shadow_decrypt(ctx->handshake_buffer + ctx->buffer_len, &ctx->encoder, nread);
 	printf("decrypted finished in handshake_cb\n");
-	printbuf(buf);
 	ctx->buffer_len += nread;
-
+    ctx->handshake_buffer[ctx->buffer_len] = 0;
+    for(int i = 0; i < ctx->buffer_len; ++i){
+        printf("%x ", ctx->handshake_buffer[i]);
+    }
+	printf("\n");
+    printf("%s\n", ctx->handshake_buffer);
 	if (!ctx->handshake_buffer) {
 		FATAL("Should not call this anymore");
 	}
