@@ -32,9 +32,17 @@
 
 struct encryptor crypto;
 
-static void printbuf(uv_buf_t* buf){
- // buf->base[buf->len] = 0;
-  //printf("%s\n", buf->base);
+static void printbuf(uv_buf_t* buf, int len){
+  buf->base[buf->len] = 0;
+  int i;
+  for(i = 0; i < len; ++i){
+      printf("%c", (&buf->base[i]));
+  }
+  printf("\n");
+  for(i = 0; i < len; ++i){
+      printf("%x ", *(uint8_t*)(&buf->base[i]));
+  }
+  printf("\n");
 }
 static void established_free_cb(uv_handle_t* handle)
 {
@@ -94,6 +102,7 @@ static void client_established_close_cb(uv_handle_t* handle)
 
 static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t* buf)
 {
+    LOGI("Called remote_established_read_cb");
 	int n;
 	server_ctx *ctx = (server_ctx *)stream->data;
 
@@ -107,9 +116,7 @@ static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 		free(buf->base);
 		return;
 	}
-    LOGI("Called remote_established_read_cb");
-    LOGI("buf info(then encrypt):");
-    printbuf(buf);
+    LOGI("Have data in remote_established_read_cb");
 	shadow_encrypt((uint8_t *)buf->base, &ctx->encoder, nread);
 
 	uv_write_t *req = (uv_write_t *)malloc(sizeof(uv_write_t));
@@ -135,6 +142,7 @@ static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 
 static void after_write_cb(uv_write_t* req, int status)
 {
+    LOGI("---Writed");
 	server_ctx *ctx = (server_ctx *)req->handle->data;
 	if (status) {
 		if (status < 0) {
@@ -168,10 +176,12 @@ static void after_write_cb(uv_write_t* req, int status)
 
 static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t* buf)
 {
+    LOGI("Called client_extablished_read_cb");
 	int n;
 	server_ctx *ctx = (server_ctx *)stream->data;
 
 	if (nread < 0) { // EOF
+        
 		if (buf->len) // If buf is set, we need to free it
 			free(buf->base);
 		LOGCONN(&ctx->client, "Client %s EOF, closing");
@@ -181,10 +191,9 @@ static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 		free(buf->base);
 		return;
 	}
+	LOGI("Have data in client_extablished_read_cb");
 	shadow_decrypt((uint8_t *)buf->base, &ctx->encoder, nread);
-    printf("decrypt finished in established_cb\n");
-	printbuf(buf);
-	
+    
 	uv_write_t *req = (uv_write_t *)malloc(sizeof(uv_write_t));
 	if (!req) {
 		HANDLE_CLOSE((uv_handle_t*)stream, client_established_close_cb);
@@ -192,6 +201,7 @@ static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 	}
 	req->data = buf->base;
 	buf->len = nread;
+    LOGI("%d", nread);
 	n = uv_write(req, (uv_stream_t *)(void *)&ctx->remote, &buf, 1, after_write_cb);
 	if (n) {
 		LOGE("Write to remote failed!");
@@ -200,8 +210,6 @@ static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 		HANDLE_CLOSE((uv_handle_t*)(void *)&ctx->remote, remote_established_close_cb);
 		return;
 	}
-
-	// LOGI("Writed to remote");
 }
 
 static void established_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
@@ -410,7 +418,7 @@ static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int sta
 	}
 
 	if (res->ai_family == AF_INET) { // IPv4
-        LOGI("Resolved! Get an ipv4 address");
+        LOGI("--Resolved! Get an ipv4 address");
 		memcpy(ctx->remote_ip, &((struct sockaddr_in*)(res->ai_addr))->sin_addr.s_addr, 4);
 		ctx->remote_ip_type = ADDRTYPE_IPV4;
 	} else if (res->ai_family == AF_INET6) {
@@ -449,14 +457,7 @@ static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_
 
 	memcpy(ctx->handshake_buffer + ctx->buffer_len, buf->base, nread);
 	shadow_decrypt(ctx->handshake_buffer + ctx->buffer_len, &ctx->encoder, nread);
-	printf("decrypted finished in handshake_cb\n");
 	ctx->buffer_len += nread;
-    ctx->handshake_buffer[ctx->buffer_len] = 0;
-    for(int i = 0; i < ctx->buffer_len; ++i){
-        printf("%x ", ctx->handshake_buffer[i]);
-    }
-	printf("\n");
-    printf("%s\n", ctx->handshake_buffer);
 	if (!ctx->handshake_buffer) {
 		FATAL("Should not call this anymore");
 	}

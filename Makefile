@@ -35,3 +35,6 @@ clean:
 	rm -f server
 	rm -rf *.dSYM
 	rm -rf test
+
+run:all
+	./server -m rc4 -p 5555
