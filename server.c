@@ -32,6 +32,8 @@
 
 struct encryptor crypto;
 
+
+/*uv_buf_t* gbuf[1];
 static void printbuf(uv_buf_t* buf, int len){
   buf->base[buf->len] = 0;
   int i;
@@ -43,7 +45,7 @@ static void printbuf(uv_buf_t* buf, int len){
       printf("%x ", *(uint8_t*)(&buf->base[i]));
   }
   printf("\n");
-}
+}*/
 static void established_free_cb(uv_handle_t* handle)
 {
 	server_ctx *ctx = (server_ctx *)handle->data;
@@ -157,6 +159,7 @@ static void after_write_cb(uv_write_t* req, int status)
 		return;
 	}
 	if ((uv_tcp_t *)req->handle == &ctx->client && !uv_is_closing((uv_handle_t *)(void *)&ctx->remote)) {
+        LOGI("write client!");
 		if (ctx->buffer_len <= MAX_PENDING_PER_CONN) {
 			int n = uv_read_start((uv_stream_t *)(void *)&ctx->remote, established_alloc_cb, remote_established_read_cb);
 			if (n) {
@@ -201,8 +204,7 @@ static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 	}
 	req->data = buf->base;
 	buf->len = nread;
-    LOGI("%d", nread);
-	n = uv_write(req, (uv_stream_t *)(void *)&ctx->remote, &buf, 1, after_write_cb);
+	n = uv_write(req, (uv_stream_t *)(void *)&ctx->remote, buf, 1, NULL);
 	if (n) {
 		LOGE("Write to remote failed!");
 		free(req);
