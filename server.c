@@ -272,7 +272,7 @@ static void connect_to_remote_cb(uv_connect_t* req, int status)
 		}
 		wreq->data = buf.base;
 		buf.len = ctx->buffer_len;
-		int n = uv_write(wreq, (uv_stream_t *)(void *)&ctx->remote, buf, 1, after_write_cb);
+		int n = uv_write(wreq, (uv_stream_t *)(void *)&ctx->remote, &buf, 1, after_write_cb);
 		if (n) {
 			LOGE("Write to remote failed!");
 			free(wreq);
