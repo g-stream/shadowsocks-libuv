@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <uv.h>
+#include "config.h" 
 
 #define STR(x) #x
 #define TOSTR(x) STR(x)

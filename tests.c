@@ -3,7 +3,7 @@
 #include <assert.h>
 #include "encrypt.h"
 #include "utils.h"
-
+#include "cipher.h"
 void encrypt_test()
 {
     struct encryptor enc;
@@ -80,8 +80,17 @@ void encrypt_test()
 
 }
 
+void test_cipher(){
+    const char* cipher = "chacha20-ietf";
+    cipher_info_t cipher_info;
+    fill_cipher_info(cipher, &cipher_info);
+    printf("kl: %d, nl: %d\n", cipher_info.key_len, cipher_info.nonce_len);
+}
+
+
 
 int main(void)
 {
 	encrypt_test();
+    test_cipher();
 }

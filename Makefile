@@ -5,8 +5,8 @@ ifeq ($(UNAME), Darwin)
 RTFLAGS=-framework CoreServices
 endif
 OLEVEL=-O2 -DNDEBUG
-CFLAGS=-Wall $(OLEVEL) -I libuv/include -std=gnu99 -luv
-FILES=server.c utils.c encrypt.c md5.c rc4.c
+CFLAGS=-Wall $(OLEVEL) -I libuv/include -std=gnu99 -luv -lsodium
+FILES=server.c utils.c encrypt.c md5.c rc4.c cipher.c
 APP=server
 
 all: $(FILES) 
@@ -25,16 +25,14 @@ gprof: OLEVEL=-O0 -g -pg
 gprof: all
 
 test: OLEVEL=-O0 -g
-test: FILES=tests.c encrypt.c md5.c rc4.c
+test: FILES=tests.c encrypt.c md5.c rc4.c cipher.c 
 test: APP=test
 test: all
 	./test
-	cd pytest; python test.py
 
 clean:
 	rm -f server
 	rm -rf *.dSYM
 	rm -rf test
 
-run:all
-	./server -m rc4 -p 5555
+	
