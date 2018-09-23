@@ -28,6 +28,7 @@
 #include <uv.h>
 #include "encrypt.h"
 #include "utils.h"
+#include "cipher.h"
 #include "server.h"
 
 struct encryptor crypto;
@@ -529,7 +530,7 @@ int main(int argc, char *argv[])
 	uint8_t *password = (uint8_t *)PASSWORD;
 	uint8_t crypt_method = CRYPTO_METHOD;
 	char *pid_path = PID_FILE;
-
+    const char cipher_name[20];
 	char opt;
 	while((opt = getopt(argc, newargv, "l:p:k:f:m:")) != -1) { // not portable to windows
 		switch(opt) {
@@ -550,6 +551,10 @@ int main(int argc, char *argv[])
 			    	crypt_method = METHOD_RC4;
 			    else if (!strcmp("shadow", optarg))
 			    	crypt_method = METHOD_SHADOWCRYPT;
+                else {
+                    crypt_method = -1;
+                    memcpy(cipher_name, optarg, strlen(optarg) + 1);
+                }
 			    break;
 			default:
 				fprintf(stderr, USAGE, newargv[0]);

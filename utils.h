@@ -73,8 +73,16 @@
                                        if (!(uv_is_closing((uv_handle_t *)(void *)&ctx->remote) || uv_is_closing((uv_handle_t *)(void *)&ctx->client)))\
                                        	   uv_close((uv_handle_t *)handle, callback);\
                                        	} while (0)
-
+#define UNREACHABLE()   FATAL("Unreachable Place")
+#define cast(type, point)   ((type) (point))
+                                        
 char *sockaddr_to_str(struct sockaddr_storage *addr);
 void setup_signal_handler(uv_loop_t *loop);
+
+void *ss_realloc(void* pt, size_t nz);
+void *ss_malloc(size_t size);
+
+#define new_buf(size) cast(uint8_t*, ss_malloc(size))
+
 
 #endif /* !UTILS_H_ */

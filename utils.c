@@ -42,6 +42,8 @@ char *sockaddr_to_str(struct sockaddr_storage *addr)
 	return result;
 }
 
+
+
 void signal_cb(uv_signal_t* handle, int signum)
 {
 	extern struct encryptor crypto;
@@ -78,4 +80,29 @@ void setup_signal_handler(uv_loop_t *loop)
 	n = uv_signal_start(hup, signal_cb, SIGINT);
 	if (n)
 		SHOW_UV_ERROR_AND_EXIT(n);
+}
+
+void *ss_realloc(void* pt, size_t nz) {
+    if(pt){
+        void* npt = realloc(pt, nz);
+        if(!npt){
+            LOGE("Realloc Error");
+        } else {
+            return npt;
+        }
+    } else {
+        void *npt = malloc(nz);
+        if(!npt){
+            LOGE("Malloc Error");
+        } else {
+            return npt;
+        }
+    }
+}
+
+void *ss_malloc(size_t size){
+    void *npt = malloc(size);
+    if(!npt)
+        LOGE("Malloc Error");
+    return npt;
 }
