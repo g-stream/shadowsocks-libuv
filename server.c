@@ -34,7 +34,6 @@
 struct encryptor crypto;
 
 
-/*uv_buf_t* gbuf[1];
 static void printbuf(uv_buf_t* buf, int len){
   buf->base[buf->len] = 0;
   int i;
@@ -46,7 +45,7 @@ static void printbuf(uv_buf_t* buf, int len){
       printf("%x ", *(uint8_t*)(&buf->base[i]));
   }
   printf("\n");
-}*/
+}
 static void established_free_cb(uv_handle_t* handle)
 {
 	server_ctx *ctx = (server_ctx *)handle->data;
@@ -171,15 +170,15 @@ static void after_write_cb(uv_write_t* req, int status)
 			if (err) {
 				SHOW_UV_ERROR(err);
 				HANDLE_CLOSE((uv_handle_t *)(void *)&ctx->remote, remote_established_close_cb);
-				free(req->data); // Free buffer
+				free(((uv_buf_t*)req->data)->base);// Free buf base
+                free(req->data); //free buf
 				free(req);
 				return;
 			}
 		}
 		ctx->buffer_len--;
 	}
-
-    free(((uv_buf_t*)req->data)->base); // Free buffer
+    free(((uv_buf_t*)(req->data))->base);
     free(req->data);
 	free(req);
 }
@@ -210,7 +209,7 @@ static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, const
 		FATAL("malloc() failed!");
 	}
 	
-    uv_buf_t* write_buf = ss_malloc(sizeof(uv_buf_t));
+    uv_buf_t* write_buf = (uv_buf_t*) ss_malloc(sizeof(uv_buf_t));
     req->data = write_buf;
     write_buf->base = buf->base;
     write_buf->len = nread;
@@ -252,6 +251,39 @@ static void handshake_client_close_cb(uv_handle_t* handle)
 	free(ctx);
 }
 
+static void after_connect_to_remote_write_cb(uv_write_t* req, int status)
+{
+	server_ctx *ctx = (server_ctx *)req->handle->data;
+	if (status) {
+		if (status < 0) {
+			if ((uv_tcp_t *)req->handle == &ctx->client) {
+				HANDLE_CLOSE((uv_handle_t *)req->handle, client_established_close_cb);
+			} else {
+				HANDLE_CLOSE((uv_handle_t *)req->handle, remote_established_close_cb);
+			}
+		}
+        free(req->data);
+		free(req);
+		return;
+	}
+	if ((uv_tcp_t *)req->handle == &ctx->client && !uv_is_closing((uv_handle_t *)(void *)&ctx->remote)) {
+        LOGI("write client!");
+		if (ctx->buffer_len <= MAX_PENDING_PER_CONN) {
+			int err = uv_read_start((uv_stream_t *)(void *)&ctx->remote, established_alloc_cb, remote_established_read_cb);
+			if (err) {
+				SHOW_UV_ERROR(err);
+				HANDLE_CLOSE((uv_handle_t *)(void *)&ctx->remote, remote_established_close_cb);
+                free(req->data); //free buf
+				free(req);
+				return;
+			}
+		}
+		ctx->buffer_len--;
+	}
+    free(req->data);
+	free(req);
+}
+
 static void connect_to_remote_cb(uv_connect_t* req, int status)
 {
 	server_ctx *ctx = (server_ctx *)req->data;
@@ -283,7 +315,7 @@ static void connect_to_remote_cb(uv_connect_t* req, int status)
 		}
 		wreq->data = buf.base;
 		buf.len = ctx->buffer_len;
-		int err = uv_write(wreq, (uv_stream_t *)(void *)&ctx->remote, &buf, 1, after_write_cb);
+		int err = uv_write(wreq, (uv_stream_t *)(void *)&ctx->remote, &buf, 1, after_connect_to_remote_write_cb);
 		if (err) {
 			LOGE("Write to remote failed!");
 			free(wreq);

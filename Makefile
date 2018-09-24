@@ -5,14 +5,14 @@ ifeq ($(UNAME), Darwin)
 RTFLAGS=-framework CoreServices
 endif
 OLEVEL=-O2 -DNDEBUG
-CFLAGS=-Wall $(OLEVEL) -I libuv/include -std=gnu99 -luv -lsodium 
+CFLAGS=-Wall $(OLEVEL) -I libuv/include -std=gnu99 -luv -lsodium -lpthread -lcrypto -lm
 FILES=server.c utils.c encrypt.c md5.c rc4.c cipher.c
 APP=server
 
 all: $(FILES)
-	$(CC) $(CFLAGS) -o \
+	$(CC) -o \
 	$(APP) $(FILES) \
-	-luv -lpthread -lcrypto -lm $(RTFLAGS)
+	$(CFLAGS) $(RTFLAGS)
 
 valgrind: OLEVEL=-O0 -g
 valgrind: all
