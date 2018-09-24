@@ -79,8 +79,8 @@ static void remote_established_close_cb(uv_handle_t* handle)
 	uv_shutdown_t *req = malloc(sizeof(uv_shutdown_t));
 	req->data = ctx;
 
-	int n = uv_shutdown(req, (uv_stream_t *)(void *)&ctx->client, client_established_shutdown_complete);
-	if (n) {
+	int err = uv_shutdown(req, (uv_stream_t *)(void *)&ctx->client, client_established_shutdown_complete);
+	if (err) {
 		LOGE("Shutdown client side write stream failed!");
 		uv_close((uv_handle_t*)(void *)&ctx->client, established_free_cb);
 		free(req);
@@ -95,18 +95,18 @@ static void client_established_close_cb(uv_handle_t* handle)
 	uv_shutdown_t *req = malloc(sizeof(uv_shutdown_t));
 	req->data = ctx;
 
-	int n = uv_shutdown(req, (uv_stream_t *)(void *)&ctx->remote, remote_established_shutdown_complete);
-	if (n) {
+	int err = uv_shutdown(req, (uv_stream_t *)(void *)&ctx->remote, remote_established_shutdown_complete);
+	if (err) {
 		LOGE("Shutdown remote side write stream failed!");
 		uv_close((uv_handle_t*)(void *)&ctx->remote, established_free_cb);
 		free(req);
 	}
 }
 
-static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t* buf)
+static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
     LOGI("Called remote_established_read_cb");
-	int n;
+	int err = 1;
 	server_ctx *ctx = (server_ctx *)stream->data;
 
 	if (nread < 0) { // EOF
@@ -127,13 +127,17 @@ static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 		HANDLE_CLOSE((uv_handle_t*)stream, remote_established_close_cb);
 		FATAL("malloc() failed!");
 	}
-	req->data = buf->base;
-	buf->len = nread;
-	n = uv_write(req, (uv_stream_t *)(void *)&ctx->client, buf, 1, after_write_cb);
-	if (n) {
+    
+    uv_buf_t* write_buf = ss_malloc(sizeof(uv_buf_t));
+    req->data = write_buf;
+    write_buf->base = buf->base;
+    write_buf->len = nread;
+    
+	err = uv_write(req, (uv_stream_t *)(void *)&ctx->client, write_buf, 1, after_write_cb);
+	if (err) {
 		LOGE("Write to client failed!");
 		free(req);
-		free(buf->base);
+		free(write_buf->base);
 		HANDLE_CLOSE((uv_handle_t*)(void *)&ctx->client, client_established_close_cb);
 		return;
 	}
@@ -155,16 +159,17 @@ static void after_write_cb(uv_write_t* req, int status)
 				HANDLE_CLOSE((uv_handle_t *)req->handle, remote_established_close_cb);
 			}
 		}
-		free(req->data); // Free buffer
+		free(((uv_buf_t*)req->data)->base); // Free buffer
+        free(req->data);
 		free(req);
 		return;
 	}
 	if ((uv_tcp_t *)req->handle == &ctx->client && !uv_is_closing((uv_handle_t *)(void *)&ctx->remote)) {
         LOGI("write client!");
 		if (ctx->buffer_len <= MAX_PENDING_PER_CONN) {
-			int n = uv_read_start((uv_stream_t *)(void *)&ctx->remote, established_alloc_cb, remote_established_read_cb);
-			if (n) {
-				SHOW_UV_ERROR(n);
+			int err = uv_read_start((uv_stream_t *)(void *)&ctx->remote, established_alloc_cb, remote_established_read_cb);
+			if (err) {
+				SHOW_UV_ERROR(err);
 				HANDLE_CLOSE((uv_handle_t *)(void *)&ctx->remote, remote_established_close_cb);
 				free(req->data); // Free buffer
 				free(req);
@@ -174,14 +179,15 @@ static void after_write_cb(uv_write_t* req, int status)
 		ctx->buffer_len--;
 	}
 
-	free(req->data); // Free buffer
+    free(((uv_buf_t*)req->data)->base); // Free buffer
+    free(req->data);
 	free(req);
 }
 
-static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t* buf)
+static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
     LOGI("Called client_extablished_read_cb");
-	int n;
+	int err = 1;
 	server_ctx *ctx = (server_ctx *)stream->data;
 
 	if (nread < 0) { // EOF
@@ -203,10 +209,14 @@ static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, uv_bu
 		HANDLE_CLOSE((uv_handle_t*)stream, client_established_close_cb);
 		FATAL("malloc() failed!");
 	}
-	req->data = buf->base;
-	buf->len = nread;
-	n = uv_write(req, (uv_stream_t *)(void *)&ctx->remote, buf, 1, NULL);
-	if (n) {
+	
+    uv_buf_t* write_buf = ss_malloc(sizeof(uv_buf_t));
+    req->data = write_buf;
+    write_buf->base = buf->base;
+    write_buf->len = nread;
+    
+	err = uv_write(req, (uv_stream_t *)(void *)&ctx->remote, write_buf, 1, NULL);
+	if (err) {
 		LOGE("Write to remote failed!");
 		free(req);
 		free(buf->base);
@@ -273,8 +283,8 @@ static void connect_to_remote_cb(uv_connect_t* req, int status)
 		}
 		wreq->data = buf.base;
 		buf.len = ctx->buffer_len;
-		int n = uv_write(wreq, (uv_stream_t *)(void *)&ctx->remote, &buf, 1, after_write_cb);
-		if (n) {
+		int err = uv_write(wreq, (uv_stream_t *)(void *)&ctx->remote, &buf, 1, after_write_cb);
+		if (err) {
 			LOGE("Write to remote failed!");
 			free(wreq);
 			uv_close((uv_handle_t*)(void *)&ctx->remote, remote_established_close_cb);
@@ -285,15 +295,15 @@ static void connect_to_remote_cb(uv_connect_t* req, int status)
 	ctx->handshake_buffer = NULL;
 	ctx->buffer_len = 0;
 	
-	int n = uv_read_start((uv_stream_t *)(void *)&ctx->client, established_alloc_cb, client_established_read_cb);
-	if (n) {
-		SHOW_UV_ERROR(n);
+	int err = uv_read_start((uv_stream_t *)(void *)&ctx->client, established_alloc_cb, client_established_read_cb);
+	if (err) {
+		SHOW_UV_ERROR(err);
 		uv_close((uv_handle_t*)(void *)&ctx->client, client_established_close_cb);
 		return;
 	}
-	n = uv_read_start((uv_stream_t *)(void *)&ctx->remote, established_alloc_cb, remote_established_read_cb);
-	if (n) {
-		SHOW_UV_ERROR(n);
+	err = uv_read_start((uv_stream_t *)(void *)&ctx->remote, established_alloc_cb, remote_established_read_cb);
+	if (err) {
+		SHOW_UV_ERROR(err);
 		uv_close((uv_handle_t*)(void *)&ctx->remote, remote_established_close_cb);
 		return;
 	}
@@ -302,7 +312,7 @@ static void connect_to_remote_cb(uv_connect_t* req, int status)
 static int do_handshake(uv_stream_t *stream)
 {
 	server_ctx *ctx = (server_ctx *)stream->data;
-	int n;
+	int err = 1;
 
 	if (!ctx->remote_ip_type) {
 		if (ctx->buffer_len < 2) // Not interpretable
@@ -336,9 +346,9 @@ static int do_handshake(uv_stream_t *stream)
 			}
 			resolver->data = ctx; // We need to locate back the stream
 			LOGI("Domain is: %s", domain);
-			n = uv_getaddrinfo(stream->loop, resolver, client_handshake_domain_resolved, domain, NULL, NULL);
-			if (n) {
-				SHOW_UV_ERROR(n);
+			err = uv_getaddrinfo(stream->loop, resolver, client_handshake_domain_resolved, domain, NULL, NULL);
+			if (err) {
+				SHOW_UV_ERROR(err);
 				uv_close((uv_handle_t*)stream, handshake_client_close_cb);
 				free(resolver);
 				return -1;
@@ -366,9 +376,9 @@ static int do_handshake(uv_stream_t *stream)
 		SHIFT_BYTE_ARRAY_TO_LEFT(ctx->handshake_buffer, 2, HANDSHAKE_BUFFER_SIZE);
 		ctx->buffer_len -= 2;
 		// Try connect now
-		n = uv_tcp_init(stream->loop, &ctx->remote);
-		if (n)
-			SHOW_UV_ERROR_AND_EXIT(n);
+		err = uv_tcp_init(stream->loop, &ctx->remote);
+		if (err)
+			SHOW_UV_ERROR_AND_EXIT(err);
 		uv_connect_t *req = (uv_connect_t *)malloc(sizeof(uv_connect_t));
 		if (!req) {
 			uv_close((uv_handle_t*)stream, handshake_client_close_cb);
@@ -381,20 +391,20 @@ static int do_handshake(uv_stream_t *stream)
 			remote.sin_family = AF_INET;
 			memcpy(&remote.sin_addr.s_addr, ctx->remote_ip, 4);
 			remote.sin_port = ctx->remote_port;
-			n = uv_tcp_connect(req, &ctx->remote, ( const struct sockaddr* )&remote, connect_to_remote_cb);
+			err = uv_tcp_connect(req, &ctx->remote, ( const struct sockaddr* )&remote, connect_to_remote_cb);
 		} else if (ctx->remote_ip_type == ADDRTYPE_IPV6) {
 			struct sockaddr_in6 remote;
 			memset(&remote, 0, sizeof(remote));
 			remote.sin6_family = AF_INET6;
 			memcpy(&remote.sin6_addr.s6_addr, ctx->remote_ip, 16);
 			remote.sin6_port = ctx->remote_port;
-			n = uv_tcp_connect(req, &ctx->remote, ( const struct sockaddr* )&remote, connect_to_remote_cb);
+			err = uv_tcp_connect(req, &ctx->remote, ( const struct sockaddr* )&remote, connect_to_remote_cb);
 		} else {
 			FATAL("addrtype unknown!");
 		}
 		
-		if (n) {
-			SHOW_UV_ERROR(n);
+		if (err) {
+			SHOW_UV_ERROR(err);
 			uv_close((uv_handle_t*)stream, handshake_client_close_cb);
 			free(req);
 			return -1;
@@ -433,10 +443,10 @@ static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int sta
 	}
 
 	if (do_handshake((uv_stream_t *)(void *)&ctx->client) == 1) {
-		int n = uv_read_start((uv_stream_t *)(void *)&ctx->client, client_handshake_alloc_cb, client_handshake_read_cb);
-		if (n) {
+		int err = uv_read_start((uv_stream_t *)(void *)&ctx->client, client_handshake_alloc_cb, client_handshake_read_cb);
+		if (err) {
 			uv_close((uv_handle_t*)(void *)&ctx->client, handshake_client_close_cb);
-			SHOW_UV_ERROR(n);
+			SHOW_UV_ERROR(err);
 		}
 	}
 
@@ -444,7 +454,7 @@ static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int sta
 	free(resolver);
 }
 
-static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, uv_buf_t* buf)
+static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
 	server_ctx *ctx = (server_ctx *)stream->data;
 
@@ -478,10 +488,10 @@ static void client_handshake_alloc_cb(uv_handle_t* handle, size_t suggested_size
 
 static void connect_cb(uv_stream_t* listener, int status)
 {
-	int n;
-
+	int err = 1;
+    
 	if (status) {
-		SHOW_UV_ERROR(n);
+		SHOW_UV_ERROR(status);
 		return;
 	}
 
@@ -496,27 +506,27 @@ static void connect_cb(uv_stream_t* listener, int status)
 	
 	make_encryptor(&crypto, &ctx->encoder, 0, NULL);
 
-	n = uv_tcp_init(listener->loop, &ctx->client);
-	if (n)
-		SHOW_UV_ERROR_AND_EXIT(n);
+	err = uv_tcp_init(listener->loop, &ctx->client);
+	if (err)
+		SHOW_UV_ERROR_AND_EXIT(err);
 
-	n = uv_accept(listener, (uv_stream_t *)(void *)&ctx->client);
-	if (n)
-		SHOW_UV_ERROR_AND_EXIT(n);
+	err = uv_accept(listener, (uv_stream_t *)(void *)&ctx->client);
+	if (err)
+		SHOW_UV_ERROR_AND_EXIT(err);
 
-	n = uv_tcp_nodelay(&ctx->client, 1);
-	if (n)
-		SHOW_UV_ERROR_AND_EXIT(n);
+	err = uv_tcp_nodelay(&ctx->client, 1);
+	if (err)
+		SHOW_UV_ERROR_AND_EXIT(err);
 
 	#ifdef KEEPALIVE_TIMEOUT
-	n = uv_tcp_keepalive(&ctx->client, 1, KEEPALIVE_TIMEOUT);
-	if (n)
-		SHOW_UV_ERROR_AND_EXIT(n);
+	err = uv_tcp_keepalive(&ctx->client, 1, KEEPALIVE_TIMEOUT);
+	if (err)
+		SHOW_UV_ERROR_AND_EXIT(err);
 	#endif /* KEEPALIVE_TIMEOUT */
 
-	n = uv_read_start((uv_stream_t *)(void *)&ctx->client, client_handshake_alloc_cb, client_handshake_read_cb);
-	if (n)
-		SHOW_UV_ERROR_AND_EXIT(n);
+	err = uv_read_start((uv_stream_t *)(void *)&ctx->client, client_handshake_alloc_cb, client_handshake_read_cb);
+	if (err)
+		SHOW_UV_ERROR_AND_EXIT(err);
 
 	LOGCONN(&ctx->client, "Accepted connection from %s");
 }
@@ -530,7 +540,7 @@ int main(int argc, char *argv[])
 	uint8_t *password = (uint8_t *)PASSWORD;
 	uint8_t crypt_method = CRYPTO_METHOD;
 	char *pid_path = PID_FILE;
-    const char cipher_name[20];
+    char cipher_name[20];
 	char opt;
 	while((opt = getopt(argc, newargv, "l:p:k:f:m:")) != -1) { // not portable to windows
 		switch(opt) {
@@ -588,24 +598,24 @@ int main(int argc, char *argv[])
 
 	LOGI("Crypto ready");
 	
-	int n;
+	int err = 1;
 	uv_loop_t *loop = uv_default_loop();
 	uv_tcp_t listener;
 
 	struct sockaddr_in6 addr;
 	uv_ip6_addr(server_listen, server_port, &addr);
 
-	n = uv_tcp_init(loop, &listener);
-	if (n)
-		SHOW_UV_ERROR_AND_EXIT(n);
+	err = uv_tcp_init(loop, &listener);
+	if (err)
+		SHOW_UV_ERROR_AND_EXIT(err);
 
-	n = uv_tcp_bind(&listener, (const struct sockaddr*) &addr, 0);
-	if (n)
-		SHOW_UV_ERROR_AND_EXIT(n);
+	err = uv_tcp_bind(&listener, (const struct sockaddr*) &addr, 0);
+	if (err)
+		SHOW_UV_ERROR_AND_EXIT(err);
 
-	n = uv_listen((uv_stream_t*)(void *)&listener, 5, connect_cb);
-	if (n)
-		SHOW_UV_ERROR_AND_EXIT(n);
+	err = uv_listen((uv_stream_t*)(void *)&listener, 5, connect_cb);
+	if (err)
+		SHOW_UV_ERROR_AND_EXIT(err);
 	LOGI("Listening on %s:%d", server_listen, server_port);
 
 	#ifndef NDEBUG

@@ -87,6 +87,7 @@ void *ss_realloc(void* pt, size_t nz) {
         void* npt = realloc(pt, nz);
         if(!npt){
             LOGE("Realloc Error");
+            return NULL;
         } else {
             return npt;
         }
@@ -94,6 +95,7 @@ void *ss_realloc(void* pt, size_t nz) {
         void *npt = malloc(nz);
         if(!npt){
             LOGE("Malloc Error");
+            return NULL;
         } else {
             return npt;
         }
