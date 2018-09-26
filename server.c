@@ -34,6 +34,14 @@
 struct encryptor crypto;
 
 
+static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf);
+static void client_handshake_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
+static void after_write_cb(uv_write_t* req, int status);
+static void established_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
+static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res);
+
+
+/*
 static void printbuf(uv_buf_t* buf, int len){
   buf->base[buf->len] = 0;
   int i;
@@ -45,7 +53,7 @@ static void printbuf(uv_buf_t* buf, int len){
       printf("%x ", *(uint8_t*)(&buf->base[i]));
   }
   printf("\n");
-}
+}*/
 static void established_free_cb(uv_handle_t* handle)
 {
 	server_ctx *ctx = (server_ctx *)handle->data;
@@ -529,15 +537,13 @@ static void connect_cb(uv_stream_t* listener, int status)
 
 	server_ctx *ctx = calloc(1, sizeof(server_ctx));
 	ctx->handshake_buffer = calloc(1, HANDSHAKE_BUFFER_SIZE);
-
+    ctx->cipher = (cipher_t*)(((uv_tcp_t*)listener)->data);
 	if (!ctx || !ctx->handshake_buffer)
 		FATAL("malloc() failed!");
 
 	ctx->client.data = ctx;
 	ctx->remote.data = ctx;
 	
-	make_encryptor(&crypto, &ctx->encoder, 0, NULL);
-
 	err = uv_tcp_init(listener->loop, &ctx->client);
 	if (err)
 		SHOW_UV_ERROR_AND_EXIT(err);
@@ -563,96 +569,65 @@ static void connect_cb(uv_stream_t* listener, int status)
 	LOGCONN(&ctx->client, "Accepted connection from %s");
 }
 
-int main(int argc, char *argv[])
-{
-  
-	char **newargv = uv_setup_args(argc, argv);
-	char *server_listen = SERVER_LISTEN;
-	int server_port = SERVER_PORT;
-	uint8_t *password = (uint8_t *)PASSWORD;
-	uint8_t crypt_method = CRYPTO_METHOD;
-	char *pid_path = PID_FILE;
-    char cipher_name[20];
-	char opt;
-	while((opt = getopt(argc, newargv, "l:p:k:f:m:")) != -1) { // not portable to windows
-		switch(opt) {
-			case 'l':
-			    server_listen = optarg;
-			    break;
-			case 'p':
-			    server_port = atoi(optarg);
-			    break;
-			case 'k':
-			    password = (uint8_t *)optarg;
-			    break;
-			case 'f':
-			    pid_path = optarg;
-			    break;
-			case 'm':
-			    if (!strcmp("rc4", optarg))
-			    	crypt_method = METHOD_RC4;
-			    else if (!strcmp("shadow", optarg))
-			    	crypt_method = METHOD_SHADOWCRYPT;
-                else {
-                    crypt_method = -1;
-                    memcpy(cipher_name, optarg, strlen(optarg) + 1);
-                }
-			    break;
-			default:
-				fprintf(stderr, USAGE, newargv[0]);
-				abort();
-		}
-	}
-
-	FILE *pid_file = fopen(pid_path, "wb");
-	if (!pid_file)
-		FATAL("fopen failed, %s", strerror(errno));
-	fprintf(pid_file, "%d", getpid());
-	fclose(pid_file);
-
-	char *process_title = malloc(PROCESS_TITLE_LENGTH); // we do not like waste memory
-	if (!process_title)
-		FATAL("malloc() failed!");
-	snprintf(process_title, PROCESS_TITLE_LENGTH, PROCESS_TITLE, server_port);
-	uv_set_process_title(process_title);
-	free(process_title);
-
-	LOGI(WELCOME_MESSAGE);
-
-	if (crypt_method == METHOD_SHADOWCRYPT)
-		LOGI("Using shadowcrypt crypto");
-	else if (crypt_method == METHOD_RC4)
-		LOGI("Using RC4 crypto");
-	else
-		FATAL("Crypto unknown!");
-
-	make_encryptor(NULL, &crypto, crypt_method, password);
-
-	LOGI("Crypto ready");
-	
-	int err = 1;
-	uv_loop_t *loop = uv_default_loop();
-	uv_tcp_t listener;
-
-	struct sockaddr_in6 addr;
-	uv_ip6_addr(server_listen, server_port, &addr);
-
-	err = uv_tcp_init(loop, &listener);
-	if (err)
-		SHOW_UV_ERROR_AND_EXIT(err);
-
-	err = uv_tcp_bind(&listener, (const struct sockaddr*) &addr, 0);
-	if (err)
-		SHOW_UV_ERROR_AND_EXIT(err);
-
-	err = uv_listen((uv_stream_t*)(void *)&listener, 5, connect_cb);
-	if (err)
-		SHOW_UV_ERROR_AND_EXIT(err);
-	LOGI("Listening on %s:%d", server_listen, server_port);
-
-	#ifndef NDEBUG
-	setup_signal_handler(loop);
-	#endif /* !NDEBUG */
-
-	return uv_run(loop, UV_RUN_DEFAULT);
+void init_G(G* g) {
+    g->tunnels_head = NULL;
+    g->tunnels_num = 0;
+    g->comm_port = COMM_PORT;
 }
+
+tunnel_t* 
+new_tunnel(G* g, const char* tunnel_name, const char* listen_ip, uint16_t port, const char* cipher_name, const char* pass) {
+    LOGI("NEW TUNNEL");
+    tunnel_t* tunnel = ss_malloc(sizeof(tunnel_t));
+    tunnel->listen_ip = listen_ip;
+    tunnel->tunnel_name = tunnel_name;
+    tunnel->port = port;
+    cipher_init(&tunnel->cipher, cipher_name, pass);
+    if(g->tunnels_head)
+        g->tunnels_head->prev = tunnel;
+    tunnel->next = g->tunnels_head;
+    tunnel->prev = NULL;
+    g->tunnels_head = tunnel;
+    return tunnel;
+}
+
+void
+release_tunnel(G* g, tunnel_t* tunnel){
+    if(tunnel == g->tunnels_head){
+        g->tunnels_head = tunnel->next;
+    } else {
+        if(tunnel->next){
+            tunnel->next = tunnel->prev;
+        }
+        tunnel->prev->next = tunnel->next;
+    }
+    cipher_release(&tunnel->cipher);
+    free(tunnel);
+}
+    
+int tunnel_establish(uv_loop_t* loop, tunnel_t* tunnel){
+	int err = 0;
+	uv_tcp_t* listener = ss_malloc(sizeof(uv_tcp_t));
+    
+    const char* server_listen = tunnel->listen_ip? tunnel->listen_ip:SERVER_LISTEN_IP;
+	struct sockaddr_in6 addr;
+	uv_ip6_addr(server_listen, tunnel->port, &addr);
+
+	err = uv_tcp_init(loop, listener);
+	if (err)
+		SHOW_UV_ERROR_AND_EXIT(err);
+    listener->data = &tunnel->cipher;
+	err = uv_tcp_bind(listener, (const struct sockaddr*) &addr, 0);
+	if (err)
+		SHOW_UV_ERROR_AND_EXIT(err);
+    
+	err = uv_listen((uv_stream_t*)listener, 5, connect_cb);
+	if (err)
+		SHOW_UV_ERROR_AND_EXIT(err);
+	LOGI("Listening on %s:%d", server_listen, tunnel->port);
+    return err;
+}
+
+
+
+

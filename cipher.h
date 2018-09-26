@@ -20,13 +20,14 @@ typedef struct cipher_s {
     cipher_info_t info;
     uint8_t* key;
     uint8_t* nonce;
+    uint8_t* pass;
 } cipher_t;
 
-void cipher_init(cipher_t* const cipher, const char* name, const char* key);
+void cipher_init(cipher_t* const cipher, const char* cipher_name, const char* pass);
 void cipher_release(cipher_t* const cipher);
 
-void ss_encrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size);
-void ss_decrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size);
+size_t ss_encrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size);
+size_t ss_decrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size);
 
 
 

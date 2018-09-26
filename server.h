@@ -22,44 +22,51 @@
 #define SERVER_H_
 
 #include <stdint.h>
+#include "cipher.h"
+#include "encrypt.h"
 
-#define SHADOW_MAJOR_VERSION 0
-#define SHADOW_MINOR_VERSION 2
-#define WELCOME_MESSAGE "Shadowsocks Version:" TOSTR(SHADOW_MAJOR_VERSION) "." TOSTR(SHADOW_MINOR_VERSION) \
-                        " libuv(" TOSTR(UV_VERSION_MAJOR) "." TOSTR(UV_VERSION_MINOR) ")"\
-                        " Written by Dndx(idndx.com)"
-#define USAGE "Shadowsocks Version:" TOSTR(SHADOW_MAJOR_VERSION) "." TOSTR(SHADOW_MINOR_VERSION) \
-                        " libuv(" TOSTR(UV_VERSION_MAJOR) "." TOSTR(UV_VERSION_MINOR) ")"\
-                        " Written by Dndx(idndx.com)\n"\
-                        "Usage: %s [-l listen] [-p port] [-k keyfile] [-f pidfile] [-m rc4|shadow]\n\n"\
-                        "Options:\n"\
-                        "  -l : Override the listening IP\n"\
-                        "  -p : Override the listening port\n"\
-                        "  -k : Override the listening password\n"\
-                        "  -f : Override the pidfile path\n"\
-                        "  -m : Override the encryption method\n\n"
-#define PROCESS_TITLE "shadowsocks on port:%d"
-#define PROCESS_TITLE_LENGTH 26
 #define ADDRTYPE_IPV4 1
 #define ADDRTYPE_DOMAIN 3
 #define ADDRTYPE_IPV6 4
+
 
 typedef struct
 {
 	uv_tcp_t client;
 	uv_tcp_t remote;
 	uint8_t remote_ip[16];   // Network order
-        uint8_t remote_ip_type;
+    uint8_t remote_ip_type;
 	uint16_t remote_port; // Network order
-        struct encryptor encoder; // En/decoder
+    struct encryptor encoder; // En/decoder
+    cipher_t* cipher;
 	unsigned char *handshake_buffer;
 	size_t buffer_len; // Also use as pending cound after handshake
 } server_ctx;
 
-static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf);
-static void client_handshake_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
-static void after_write_cb(uv_write_t* req, int status);
-static void established_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf);
-static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res);
+typedef struct statistic_info_s {
+} statistic_info_t;
+
+
+typedef struct tunnel_s{
+    const char* listen_ip;
+    const char* tunnel_name;
+    cipher_t cipher;
+    uint16_t    port;
+    struct tunnel_s* prev;
+    struct tunnel_s* next;
+    statistic_info_t* statistic_info;
+} tunnel_t;
+
+typedef struct {
+    tunnel_t*    tunnels_head;
+    uint16_t     tunnels_num;
+    uint16_t     comm_port;
+} G;
+
+void       init_G(G* g);
+tunnel_t*  new_tunnel(G* g, const char* tunnel_name, const char* server_listen, uint16_t port, const char* cipher_name, const char* pass);
+void       release_tunnel(G* g, tunnel_t* tunnel);
+
+int        tunnel_establish(uv_loop_t* loop, tunnel_t* tunnel);
 
 #endif /* !SERVER_H_ */

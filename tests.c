@@ -80,12 +80,6 @@ void encrypt_test()
 
 }
 
-void test_cipher(){
-    const char* cipher = "chacha20-ietf";
-    cipher_info_t cipher_info;
-    fill_cipher_info(cipher, &cipher_info);
-    printf("kl: %d, nl: %d\n", cipher_info.key_len, cipher_info.nonce_len);
-}
 
 
 void
@@ -98,6 +92,23 @@ dump(char *tag, char *text, int len)
     printf("\n");
 }
 
+void test_cipher(){
+    const char* cipher_name = "chacha20-ietf";
+    cipher_info_t cipher_info;
+    const char* pass = "asdf";
+    cipher_t cipher;
+    cipher_init(&cipher, cipher_name, pass);
+    
+    printf("kl: %d, nl: %d\n", cipher_info.key_len, cipher_info.nonce_len);
+    
+    char a[] = "1234567890    ";
+    int s = ss_encrypt_buf(&cipher, a, 10);
+    printf("after encrypt %d\n", s);
+    dump("enc: ", a, s); 
+    s = ss_decrypt_buf(&cipher, a, s);
+    printf("after decrypt %d\n", s);
+    dump("dec: ", a, s);
+}
 
 struct encryptor crypto;
 
