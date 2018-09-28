@@ -115,7 +115,7 @@ static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, const
     LOGI("Called remote_established_read_cb");
 	int err = 1;
 	server_ctx *ctx = (server_ctx *)stream->data;
-
+    cipher_t* cipher = ctx->cipher;
 	if (nread < 0) { // EOF
 		if (buf->len) // If buf is set, we need to free it
 			free(buf->base);
@@ -126,9 +126,10 @@ static void remote_established_read_cb(uv_stream_t* stream, ssize_t nread, const
 		free(buf->base);
 		return;
 	}
-    LOGI("Have data in remote_established_read_cb");
-	shadow_encrypt((uint8_t *)buf->base, &ctx->encoder, nread);
-
+    LOGI("Have %zd data in remote_established_read_cb", nread);
+	//shadow_encrypt((uint8_t *)buf->base, &ctx->encoder, nread);
+    ss_encrypt_buf(cipher, (uint8_t *)buf->base, nread);
+    
 	uv_write_t *req = (uv_write_t *)malloc(sizeof(uv_write_t));
 	if (!req) {
 		HANDLE_CLOSE((uv_handle_t*)stream, remote_established_close_cb);
@@ -196,9 +197,8 @@ static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, const
     LOGI("Called client_extablished_read_cb");
 	int err = 1;
 	server_ctx *ctx = (server_ctx *)stream->data;
-
+    cipher_t* cipher = ctx->cipher;
 	if (nread < 0) { // EOF
-        
 		if (buf->len) // If buf is set, we need to free it
 			free(buf->base);
 		LOGCONN(&ctx->client, "Client %s EOF, closing");
@@ -208,9 +208,12 @@ static void client_established_read_cb(uv_stream_t* stream, ssize_t nread, const
 		free(buf->base);
 		return;
 	}
-	LOGI("Have data in client_extablished_read_cb");
-	shadow_decrypt((uint8_t *)buf->base, &ctx->encoder, nread);
-    
+	LOGI("Have %zd data in client_extablished_read_cb", nread);
+	//shadow_decrypt((uint8_t *)buf->base, &ctx->encoder, nread))
+    ss_decrypt_buf(cipher, (uint8_t *)buf->base, nread);
+    char* p = buf->base;
+    p[nread] = 0;
+    LOGI("msg: %s", p);
 	uv_write_t *req = (uv_write_t *)malloc(sizeof(uv_write_t));
 	if (!req) {
 		HANDLE_CLOSE((uv_handle_t*)stream, client_established_close_cb);
@@ -497,7 +500,7 @@ static void client_handshake_domain_resolved(uv_getaddrinfo_t *resolver, int sta
 static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
 	server_ctx *ctx = (server_ctx *)stream->data;
-
+    cipher_t* cipher = ctx->cipher;
 	if (nread < 0) {
 		if (buf->len) // If buf is set, we need to free it
 			free(buf->base);
@@ -507,9 +510,20 @@ static void client_handshake_read_cb(uv_stream_t* stream, ssize_t nread, const u
 		free(buf->base);
 		return;
 	}
-
-	memcpy(ctx->handshake_buffer + ctx->buffer_len, buf->base, nread);
-	shadow_decrypt(ctx->handshake_buffer + ctx->buffer_len, &ctx->encoder, nread);
+    //cipher->nonce should be the begin bytes of buf data;
+    // [nonce_len of iv][      encrypted data      ]   -- stream data schema
+    LOGI("Have data in client_handshake_read_cb");
+	//shadow_decrypt(ctx->handshake_buffer + ctx->buffer_len, &ctx->encoder, nread);
+    nread -= cipher->info.nonce_len;
+    LOGI("nread : %zd", nread);
+    memcpy(cipher->nonce, buf->base, cipher->info.nonce_len);
+    /*
+    ss_decrypt_buf(cipher, (uint8_t *)(buf->base) + cipher->info.nonce_len, nread);
+	memcpy(ctx->handshake_buffer + ctx->buffer_len, buf->base + cipher->info.nonce_len, nread);
+    */
+    memcpy(ctx->handshake_buffer+ctx->buffer_len, buf->base + cipher->info.nonce_len, nread);
+    ss_decrypt_buf(cipher, (uint8_t*)(ctx->handshake_buffer + ctx->buffer_len ), nread);
+    
 	ctx->buffer_len += nread;
 	if (!ctx->handshake_buffer) {
 		FATAL("Should not call this anymore");

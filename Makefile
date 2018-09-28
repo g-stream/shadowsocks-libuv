@@ -5,7 +5,7 @@ ifeq ($(UNAME), Darwin)
 RTFLAGS=-framework CoreServices
 endif
 OLEVEL=-O2 -DNDEBUG
-CFLAGS=-Wall $(OLEVEL) -I libuv/include -std=gnu99 -luv -lsodium -lpthread -lcrypto -lm
+CFLAGS=-Wall $(OLEVEL) -I libuv/include -g -std=gnu99 -luv -lsodium -lpthread -lcrypto -lm
 FILES=server.c utils.c encrypt.c md5.c rc4.c cipher.c cli.c
 APP=suv
 

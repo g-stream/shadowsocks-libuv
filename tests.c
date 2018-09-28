@@ -93,21 +93,20 @@ dump(char *tag, char *text, int len)
 }
 
 void test_cipher(){
-    const char* cipher_name = "chacha20-ietf";
-    cipher_info_t cipher_info;
+    const char* cipher_name = "chacha20";
     const char* pass = "asdf";
     cipher_t cipher;
     cipher_init(&cipher, cipher_name, pass);
+    memset_random_bytes(cipher.nonce, cipher.info.nonce_len);
     
-    printf("kl: %d, nl: %d\n", cipher_info.key_len, cipher_info.nonce_len);
+    printf("type :%d  id: %d \n kl: %d, nl: %d\n",cipher.info.type, cipher.info.id, cipher.info.key_len , cipher.info.nonce_len);
     
-    char a[] = "1234567890    ";
-    int s = ss_encrypt_buf(&cipher, a, 10);
-    printf("after encrypt %d\n", s);
-    dump("enc: ", a, s); 
-    s = ss_decrypt_buf(&cipher, a, s);
-    printf("after decrypt %d\n", s);
-    dump("dec: ", a, s);
+    char a[] = "1234567890   0000000000000000000000000000000000000000000000000000000000000000000000000000000000000055 "; 
+    ss_encrypt_buf(&cipher, a, strlen(a));
+    dump("enc: ", a, strlen(a)); 
+    ss_decrypt_buf(&cipher, a, strlen(a));
+    dump("dec: ", a, strlen(a));
+    printf("%s", a, strlen(a));
 }
 
 struct encryptor crypto;

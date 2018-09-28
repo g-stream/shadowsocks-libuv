@@ -21,14 +21,16 @@ typedef struct cipher_s {
     uint8_t* key;
     uint8_t* nonce;
     uint8_t* pass;
+    uint8_t  counter;
 } cipher_t;
 
 void cipher_init(cipher_t* const cipher, const char* cipher_name, const char* pass);
 void cipher_release(cipher_t* const cipher);
 
-size_t ss_encrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size);
-size_t ss_decrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size);
+void ss_encrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size);
+void ss_decrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size);
 
+void memset_random_bytes(void * const pt, const size_t size);
 
 
 

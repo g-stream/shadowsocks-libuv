@@ -3,6 +3,9 @@
 #include "utils.h"
 #include "md5.h"
 #include <stdint.h>
+
+#define SODIUM_BLOCK_SIZE 64
+
 #define SUPPORTED_AEAD_CIPHERS \
 /*                  TYPE,           name,                          key_len,                                    nonce_len,                                   tag_len*/\
     AEAD_CIPHER_INFO(AES_256_GCM,             "aes-256-gcm",             crypto_aead_aes256gcm_KEYBYTES,             crypto_aead_aes256gcm_NPUBBYTES,             crypto_aead_aes256gcm_ABYTES)\
@@ -152,6 +155,7 @@ stream_cipher_free(cipher_t* cipher){
 
 void cipher_init(cipher_t* const cipher, const char* name, const char* pass){
     fill_cipher_info(name, &cipher->info);
+    cipher->counter = 0;
     switch(cipher->info.type) {
         case STREAM_CIPHER:
             stream_cipher_malloc(cipher);
@@ -170,30 +174,30 @@ void cipher_release(cipher_t* const cipher) {
 }
 
 //size is the oringe size without nonce
-size_t ss_encrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size) {
+//make sure the buf size is big enough to contain the size of text and the cipher.info.nonce_len
+void ss_encrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size) {
+    LOGI("%X %X %X %X", cipher->nonce[0],cipher->nonce[1],cipher->nonce[2],cipher->nonce[3]); 
+    printf("in encrypt : type : %d\n", cipher->info.type);
+    printf("%p\n", cipher);
     switch(cipher->info.type){
         case STREAM_CIPHER:
-            uint8_t* tmpbuf = new_buf(size);
-            ss_stream_xor(tmpbuf, buf, size, cipher->nonce, cipher->key, cipher->info.id);
-            memcpy(buf, cipher->nonce, cipher->info.nonce_len);
-            memcpy(buf + cipher->info.nonce_len, tmpbuf, size);
-            memset_random_bytes(cipher->nonce, cipher->info.nonce_len);
-            return size + cipher->info.nonce_len;
+            ss_stream_xor(buf, buf, size, cipher->nonce, cipher->key, cipher->info.id);
             break;
         case AEAD_CIPHER:
-            LOGE("Havent implemented");
+            LOGE("Haven't implemented");
             break;
         default:
             UNREACHABLE();
     }
 }
 
-size_t ss_decrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size) {
+void ss_decrypt_buf(cipher_t* cipher, uint8_t* buf, size_t size) {
+    LOGI("%X %X %X %X", cipher->nonce[0],cipher->nonce[1],cipher->nonce[2],cipher->nonce[3]); 
+    printf("in decrypt : type : %d\n", cipher->info.type);
+    printf("%d\n", cipher->info.id);
     switch(cipher->info.type){
         case STREAM_CIPHER:
-            ss_stream_xor(buf + cipher->info.nonce_len, buf+ cipher->info.nonce_len, size - cipher->info.nonce_len, buf, cipher->key, cipher->info.id);
-            SHIFT_BYTE_ARRAY_TO_LEFT(buf, cipher->info.nonce_len, size);
-            return size - cipher->info.nonce_len;
+            ss_stream_xor(buf, buf, size, cipher->nonce, cipher->key, cipher->info.id);
             break;
         case AEAD_CIPHER:
             LOGE("Havent implemented");

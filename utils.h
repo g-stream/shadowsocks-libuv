@@ -82,7 +82,7 @@ void setup_signal_handler(uv_loop_t *loop);
 void *ss_realloc(void* pt, size_t nz);
 void *ss_malloc(size_t size);
 
-#define new_buf(size) cast(uint8_t*, ss_malloc(size))
+#define new_buf(size) (cast(uint8_t*, ss_malloc(size)))
 
 
 #endif /* !UTILS_H_ */
